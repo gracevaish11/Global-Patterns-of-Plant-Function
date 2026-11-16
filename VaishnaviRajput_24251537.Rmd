@@ -1,0 +1,627 @@
+---
+#title: "A Bayesian Seemingly Unrelated Regression Approach to Modelling Missing Plant Trait Data"
+output: 
+  pdf_document:
+    number_sections: true
+    latex_engine: xelatex
+    extra_dependencies:
+      - float
+      - graphicx
+fontsize: 12pt
+geometry: left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm
+papersize: a4
+linestretch: 1.5
+header-includes:
+  - \usepackage{tocloft}
+  - \setlength{\cftbeforesecskip}{10pt}
+  - \usepackage{mathtools}
+  - \PassOptionsToPackage{math-style=TeX}{unicode-math}
+  - \usepackage{amsmath}
+  - \usepackage{bm}
+  - \usepackage{booktabs}
+  - \usepackage{caption}
+  - \usepackage{unicode-math}
+  - \setmathfont{Latin Modern Math}
+  - \usepackage{float}
+  - \usepackage{graphicx}
+  - \usepackage{lipsum}
+  - \usepackage{mathtools}
+  - \usepackage{setspace}
+  - \usepackage{subcaption}
+  - \usepackage{multirow}
+  - \captionsetup[figure]{font=small}
+  - \captionsetup[table]{font=small}
+  - \usepackage{array}
+  - \usepackage{amssymb}
+  - \usepackage{pifont}
+  - \newcommand{\cmark}{\ding{51}}  % check mark
+  - \newcommand{\xmark}{\ding{55}}  % x mark
+  - \usepackage{adjustbox}
+  - \usepackage{ragged2e}
+  - \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+bibliography: thesis_bibliography.bib
+csl: american-statistical-association 2.csl
+link-citations: yes
+
+---
+\pagenumbering{gobble}
+\begin{center}
+\begin{figure}
+  \centering
+  \includegraphics[width=0.6\columnwidth]{Figures/logo.png}
+\end{figure}
+\bigskip
+
+\Large
+\textbf{MSc. Data Science and Analytics Thesis}
+\end{center}
+\bigskip
+\bigskip
+\bigskip
+
+\begin{center}
+\large {A Bayesian Seemingly Unrelated Regression Approach to Modelling Missing Plant Trait Data}
+\end{center}
+\bigskip
+
+\begin{center}
+\large
+\textbf{{Author:}} \\
+\large{Vaishnavi Vijay Rajput}  
+\medskip
+
+\textbf{{Student Number:}} \\
+\large{24251537}  
+\medskip
+
+\textbf{{Supervisor:}} \\
+\large{Dr. Keefe Murphy}
+\end{center}
+\bigskip
+\bigskip
+
+\begin{center}
+\large{\textit{A thesis submitted in fulfilment of the requirements for the degree of Masters in Data Science and Analytics 2024-2025}}
+\medskip
+
+\large{to the}
+\medskip
+
+\large{Department of Mathematics \& Statistics} \\
+\large{Maynooth University}
+\bigskip
+\bigskip
+
+\large
+\textbf{8\textsuperscript{th} August 2025}
+\end{center}
+
+\newpage
+\pagenumbering{roman}
+ 
+# Acknowledgements {.unnumbered}
+
+I would like to sincerely thank my supervisor, Dr. Keefe Murphy, for his expert guidance, support, and encouragement throughout the thesis. I’m also grateful to the lecturers in the Department of Mathematics and Statistics for their teaching and feedback. Finally, I want to thank my family and friends for their constant motivation and belief in me throughout this journey.
+
+\newpage
+
+# Abstract {.unnumbered}
+
+
+Plant functional traits are the main predictors of how plant species respond to and interact with their local environments. However, datasets that compile such characteristics at a global scale often display extensive missingness, with similarities in trait values lacking in overlapping and non random designs. Missing data designs of this kind present formidable analytical challenges, reducing statistical power and causing bias when relying on conventional complete case analysis. This thesis re analyzes a global dataset originally analyzed by Maire et al. (2015), consisting of 2,384 plant observations and 46 complete environmental predictors for climate, soil, and geographic variables. The dataset includes five significant leaf traits, but only 9\% of the samples have complete information for all of them.
+
+To surmount the limitations imposed by missingness and dependencies among traits, we evaluate and compare three Bayesian regression methods. We start by fitting univariate Bayesian regressions for each trait on complete cases only, as a naive benchmark. We follow this with a multivariate Bayesian seemingly unrelated regression (SUR) model on the same complete case subset to exploit any residual correlations between traits. We conclude with a more comprehensive modelling approach that combines non parametric imputation using the \texttt{missForest} algorithm with a multivariate Bayesian SUR model on the full dataset. This ultimate model employs the horseshoe prior to perform regularisation and variable selection in a high dimensional predictor space.
+
+Our findings indicate that the imputed SUR model recovers more significant and ecologically meaningful relationships between environmental predictors and traits than either of the complete case models. The Horseshoe prior also helps to distinguish between relevant predictors and noise, yielding more interpretable findings.
+
+This thesis demonstrates how the integration of imputation, multivariate modelling, and Bayesian regularisation can shatter the limitations of traditional ecological analysis pipelines. The proposed method enables more robust inference and also results in a better understanding of how climate and soil together regulate plant physiology in ecosystems across the globe.
+
+**Keywords:** Bayesian regression, Horseshoe prior, imputation, Missforest, missing data, plant traits, seemingly unrelated regression
+\newpage
+
+\tableofcontents
+
+\newpage
+
+# List of tables {.unnumbered}
+
+\renewcommand{\listtablename}{}
+\listoftables
+
+\newpage
+
+# List of figures {.unnumbered}
+
+\renewcommand{\listfigurename}{}
+\listoffigures
+
+\newpage
+
+\pagenumbering{arabic}
+
+# Introduction {#Introduction}
+
+The capacity to understand how plants respond to their environment is fundamental to the study of functional ecology. Key physiological traits such as leaf area, stomatal conductance, and nutrient content reveal how plants manage essential trade offs such as resource acquisition versus conservation that shape their growth, survival, and reproduction. These traits underpin models of species distribution, ecosystem function, and large scale biodiversity patterns, making them crucial for ecological forecasting environment [@Li2024_globalTraitPatterns].
+
+This thesis re examines a global plant trait dataset first analysed by Maire et al.\ (2015), who investigated trait environment relationships using a set of univariate linear regressions on complete cases only. While their study identified valuable ecological associations, it also had several methodological drawbacks. Most notably, the complete case approach resulted in the loss of over 90\% of the data due to missing trait values. Additionally, traits were modelled independently, despite clear biological interdependencies among them. Their models also included a large number of environmental predictors 46 in total without any regularisation, making them prone to overfitting and potentially unstable inference [@Wright2004_leafEconomics].
+
+To address these limitations, this thesis adopts a Bayesian seemingly unrelated regression model, originally developed by Zellner (1962), to jointly estimate multiple traits while accounting for their residual correlation. We employ this framework alongside the horseshoe prior (Carvalho et al., 2010), which enables the model to perform automatic variable selection allowing each trait to be associated with a distinct subset of relevant predictors. This differs from conventional multivariate regression models, which assume all responses depend on all covariates. While SUR allows predictor response flexibility, it typically requires that the structure be specified manually [@Grames2024_sparseClimate]. The inclusion of the horseshoe prior removes this burden by learning the trait specific relevance of predictors directly from the data. In this way, our approach retains the interpretability of separate univariate regressions as used by Maire et al.\ (2015) while also capturing dependencies between correlated traits to improve estimation power and model efficiency.
+
+The dataset presents an additional challenge: an extensive and overlapping pattern of missing trait values. Simply removing incomplete observations would severely reduce the usable sample size and introduce bias. To avoid this, we first apply the \texttt{missForest} algorithm (Stekhoven and B\"uhlmann, 2012), a non parametric imputation method based on random forests. It is well suited to ecological data due to its ability to handle nonlinearity, high dimensionality, and complex interactions. This enables us to impute missing traits based on the full set of environmental covariates, restoring the full dataset of 2,384 samples for analysis.
+
+The final pipeline combines \texttt{missForest} imputation with Bayesian seemingly unrelated regression and regularisation through the horseshoe prior. All models are implemented in JAGS (Plummer, 2003), a software environment for Bayesian inference using Gibbs sampling. By integrating flexible imputation, multivariate joint modelling, and automatic shrinkage, this work offers a principled and efficient approach to understanding how climate and soil conditions shape plant function across ecosystems worldwide.
+
+## Objective
+The overall objective of this thesis is to develop a statistically sound and ecologically meaningful approach to modelling high dimensional plant trait data with extensive missingness and complex inter trait dependencies. Traditional approaches to trait environment analysis, such as univariate regressions on complete cases, fail to make use of available data and ignore the fact that plant traits often exhibit strong biological dependencies. This project aims to move beyond these limitations by using a Bayesian seemingly unrelated regression model that offers the ability of joint modelling of multiple traits as well as allowing each trait to be linked with its own set of environmental predictors. Unlike traditional multivariate models, which assume that all the traits are influenced by the same covariates, the proposed method enables trait specific predictor selection, thus offering greater ecological realism as well as statistical flexibility. To this end, the model employs the horseshoe prior, a sparsity inducing shrinkage prior that performs automatic variable selection and overfitting protection in high dimensions. This allows the model to learn from the data itself which covariates are informative for which traits, removing manual specification and facilitating more interpretable inference. Another main goal is also to retain as much information as possible by addressing the extensive and systematic missingness in the response matrix. With this in consideration, the thesis includes non parametric imputation through the \texttt{missForest} algorithm, which has the ability to model intricate nonlinear relationships and is naturally well adapted to ecological data. This enables imputation of missing trait values in a distributionally assumption-free manner, and without compromising the data's richness and integrity. By synthesising these methodological components imputation, joint multivariate modelling, and regularisation this thesis seeks to create a consistent and principled trait environment analysis pipeline. Along with the methodological innovation, a broader objective is to make biologically interpretable inference regarding how climate and soil jointly affect plant function across the globe. In doing so, the study not only improves upon earlier analyses of this data set but also offers a more general template for handling equally complex and incomplete ecological data elsewhere [@Joswig2023Imputing]
+
+
+
+# Data {#Data}
+
+This section introduces the dataset used throughout the thesis, originally compiled and analysed by Maire et al. (2015). In Section \ref{DatasetOverview}, we provide an overview of the key traits and environmental predictors included in the data. Section \ref{MissingnessPattern} explores the structure and extent of missing values in the response variables, which presents one of the central challenges addressed in this work. Finally, Section \ref{ExploratoryDataAnalysis} includes additional exploratory analysis to better understand the relationships among traits and covariates before model fitting.
+.
+
+## Dataset Overview {#DatasetOverview}
+
+The dataset employed in the current thesis was originally collected by Maire et al. (2015) and comprises 2,384 georeferenced plant species observations sampled over a wide range of ecosystems worldwide. Five significant photosynthetic related traits defining the plant physiological function, each measured per unit leaf area, are targeted.
+
+The five plant traits analysed in this study, along with their descriptions and number of non-missing observations, are summarised in Table\ref{tab:response-overview}.
+
+
+
+\begin{table}[H]
+\centering
+\caption[Overview of response traits]{Overview of the five response traits used in this study, including descriptions, measurement units, and number of non-missing observations.}
+\label{tab:response-overview}
+\begin{tabular}{llll}
+\toprule
+\textbf{Trait} & \textbf{Description} & \textbf{Unit} & \textbf{Non-missing (\(n\))} \\
+\midrule
+SLA    & Specific Leaf Area                   & cm\textsuperscript{2}/g          & 1,935 \\
+Aarea  & Photosynthetic Rate per Leaf Area    & \(\mu\)mol CO\textsubscript{2} m\textsuperscript{-2} s\textsuperscript{-1} & 2,356 \\
+Narea  & Nitrogen Concentration per Leaf Area & g N m\textsuperscript{-2}        & 1,716 \\
+Parea  & Phosphorus Concentration per Leaf Area & g P m\textsuperscript{-2}        & 532 \\
+Gs     & Stomatal Conductance                 & mmol H\textsubscript{2}O m\textsuperscript{-2} s\textsuperscript{-1} & 1,015 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+In addition to the traits, the dataset contains 46 fully observed environmental covariates spanning climate, soil, and site conditions. A representative subset of these covariates is summarised in Table\ref{tab:env-covariates}. These include: climate variables such as mean annual temperature, accumulated precipitation, radiation levels, and potential evapotranspiration; soil properties like pH, salinity, phosphorus availability, organic carbon, and cation exchange capacity; and geographic descriptors such as latitude, longitude, elevation, and terrain ruggedness. 
+
+These specific covariates were selected for illustration because they are commonly cited in the functional trait literature, including Maire et al.\ (2015), as being ecologically influential for plant trait variation across environmental gradients. Table\ref{tab:env-covariates} does not exhaustively list all 46 predictors but highlights those with strong theoretical or empirical relevance.
+
+\begin{table}[H]
+\centering
+\caption[Representative environmental covariates]{Representative subset of environmental predictors included in the analysis, grouped by category. This table does not list all 46 covariates but includes a selection of variables from each group that are commonly cited as ecologically meaningful in the literature, including Maire et al.\ (2015).}
+
+\label{tab:env-covariates}
+\begin{tabular}{lll}
+\toprule
+\textbf{Variable} & \textbf{Description} & \textbf{Category} \\
+\midrule
+MAT & Mean Annual Temperature & Climate \\
+MAP & Mean Annual Precipitation & Climate \\
+PET & Potential Evapotranspiration & Climate \\
+pH & Soil Acidity & Soil \\
+Pavail & Available Phosphorus & Soil \\
+Elevation & Site elevation & Geography \\
+... & ... & ... \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The richness of the environmental covariates means that this dataset is ideally suited for the analysis of large scale patterns in trait environment relationships. Nevertheless, the partially observed nature of the response matrix presents large analytical challenges.
+
+## Missingness Pattern {#MissingnessPattern}
+
+
+The trait data contain missing values that are both extensive and structured in nature. Many observations are incomplete, and the missingness is informative, with traits tending to be missing in overlapping groups rather than independently. This structure poses both statistical and biological challenges, as ignoring missing data or handling it improperly can introduce systematic biases in downstream analyses.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth,keepaspectratio]{Figures/missingness_pattern.png}
+\caption[Overlapping missingness patterns in the plant traits]{Missing data distribution for the five response traits. Each row represents a different missingness pattern. Blue cells represent the presence of a trait and pink cells represent absence. Left values represent the number of samples with each pattern. Right values represent the number of missing traits with each pattern. Bottom values represent the number of samples with each trait missing.}
+\label{missingpattern}
+\end{figure}
+
+Only 217 samples in the dataset have complete observations for all five response traits. This amount of data loss has severe implications for multivariate modelling using the complete cases approach, because it excludes over 90\% of the data that exist. Cutting down on the sample by such a large proportion can significantly lower statistical power and increase the risk of bias, particularly if the sub population of fully observed cases is not representative of the whole dataset. In ecological research, where field sampling may be limited by logistical or environmental constraints, sole reliance on complete cases may dramatically limit the validity and generalisability of inference based on models.
+\begin{table}[H]
+\centering
+\caption[Missingness summary for response traits]{Percentage of missing data for each response trait based on the data used for trait statistics.}
+\label{tab:missingness-summary-correct}
+\begin{tabular}{llll}
+\toprule
+\textbf{Variable} & \textbf{Description} & \textbf{Missingness} \\
+\midrule
+SLA    & Specific Leaf Area            & 18.8\% \\
+Aarea  & Photosynthesis per Area       & 1.2\%  \\
+Narea  & Nitrogen per Area             & 28.0\% \\
+Parea  & Phosphorus per Area           & 77.7\% \\
+Gs     & Stomatal Conductance          & 57.4\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+Missingness nevertheless varies greatly between traits. Aarea is the most observed trait, with missingness in only 28 cases, i.e., observed in 2,356 samples. SLA is missing in 449 cases with 1,935 observed values. Narea is missing in 668 cases and has 1,716 observed values. Gs is less complete, with 1,369 missing cases and thus 1,015 observed samples. Parea is the most incomplete of these characteristics, with only 532 observed and 1,852 missing. These figures suggest that while complete information is rare, substantial quantities of partially complete information are available in all characteristics.
+
+While the proportion of complete cases remains relatively high for Aarea and SLA, the large amount of missingness for the other traits has severe implications for univariate modelling strategies relying on complete cases. In these approaches, all traits are investigated independently based solely on the subset of samples in which they appear. This generates different sample sizes across models and, for traits with extensive missingness like Parea and Gs, can generate extremely small and potentially unrepresentative subsets. This causes instability in model estimates and makes direct comparisons between traits difficult.
+
+Additionally, the missingness pattern is neither random nor independent. Traits such as Aarea, SLA, and Narea are never the only missing trait in any observation. That is, if they ever occur missing, they are always in conjunction with other missing traits [@Poyatos2018_gapImpute]. This orderly and overlapping pattern suggests that the missingness is due to systematic mechanisms, such as the difficulty of measurement, field restrictions, or data collection priorities in traits. These features violate the assumptions of traditional missing data management and require more adaptable procedures that can make educated use of missing data.
+
+As a response to this requirement, the current thesis employs the \texttt{missForest} algorithm, a random forest based non parametric imputation method. \texttt{missForest} is especially suitable for this situation since it can capture high order, nonlinear interactions and relationships among variables, while still preserving the dependencies between the traits and environmental covariates. By imputing missing values of traits from all the available information, it allows the full dataset to be retained for subsequent modelling, thereby recovering statistical power and allowing for a more accurate and extensive analysis of plant trait environment relationships.
+
+
+## Exploratory Data Analysis {#ExploratoryDataAnalysis}
+
+We conducted exploratory data analysis (EDA) to gain a comprehensive picture of the shape, diversity, and interrelations of the response characteristics and between the environmental covariates prior to performing proper modelling. Due to the extreme amount of missingness of the response matrix,our exploratory analyses were necessarily restricted to the observed (i.e., non missing) values. This offers a promise that the patterns identified are actual data and not influenced by imputation or missingness mechanism assumptions.
+
+Early inspection showed that all five response traits exhibited high continuity and high positive skewness, i.e., that their distributions were not normally distributed and that there was extreme heterogeneity in trait magnitudes. To overcome this, we log transformed all five traits, which improved normality, reduced scale heterogeneity, and enabled more stable downstream modelling.
+
+To explore further the nature of the response traits, we constructed a generalised pairs plot that combines various types of diagnostic visualisations. The diagonal panels of the plot display the marginal distributions of each trait as density plots, which indicate their skewness prior to transformation. The lower triangular section of the matrix displays scatterplots and Pearson correlation coefficients for all pairs of traits, and the upper triangular section indicates what the presence or absence of any one trait is related to the distributions of the others, through boxplots, histograms, and mosaic plots.
+
+Notably, we found that the majority of the pairwise correlations between traits were statistically significant at the 95% confidence level despite missing data. This indicates that strong dependencies exist among traits that persist even when modeled using complete observations. These significant correlations imply that it is possible that assuming traits as independent  as in univariate regression  might potentially miss common biological and environmental signals present in the data.
+
+These findings provide empirical support for the application of a multivariate modelling strategy. Specifically, they favor the use of a seemingly unrelated regression (SUR) model that is tailored to address residual correlations among traits. By estimating such interdependencies, SUR can exploit statistical power among traits, increase estimation efficiency, and yield tighter and more ecologically sound inferences. In general, the EDA reveals structured relationships, systematic missingness, and non trivial dependencies that need to be addressed via joint modelling methods.
+
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{generalised_pairs_plot.png}
+\caption{Generalised pairs plot of response traits.}
+\label{fig:pairs-plot}
+\end{figure}
+
+A summary of the central tendencies, dispersion, and missing data proportions for all the traits is presented in a descriptive table. SLA and Gs, for example, have relatively high variance and high missingness percentages, while distributions like Aarea and Narea are more compact with relatively low missing data proportions. These differences demonstrate careful data imputation need and support the modeling of traits jointly rather than individually.
+
+\begin{table}[H]
+\centering
+\caption[Summary statistics for response traits]{Summary statistics for response traits showing mean, standard deviation, and proportion of missing data.}
+\label{fig:summary-table}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Trait} & \textbf{Mean} & \textbf{Standard Deviation} & \textbf{Proportion Missing} \\
+\midrule
+SLA    & 124.104 & 78.475  & 0.188 \\
+Aarea  & 10.596  & 6.350   & 0.012 \\
+Narea  & 1.927   & 1.009   & 0.280 \\
+Parea  & 0.126   & 0.107   & 0.777 \\
+Gs     & 293.4   & 240.732 & 0.574 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+To explore trait environment relationships further, we prepared sets of scatterplots of log transformed values of a set of traits versus relevant environmental covariates, such as pH, Miq, and Pavail. These plots show interpretable, often nonlinear patterns that tend to be consistent with previous ecological studies, e.g., Maire et al. (2015). By observing these patterns, we provide evidence supporting the role of environmental gradients in explaining functional trait variation between sites, adding biological justification to the model structure.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{Figures/EDA_Trait_Covariate_Scatterplots_4Traits.png}
+\caption[Exploratory scatterplots of trait–covariate relationships]{Scatterplots between log transformed trait values and selected covariates (pH, Miq, Pavail). Linear trend lines are added to aid interpretation. Due to the high level of missingness in Parea (77.7\%), the trait was excluded from exploratory trait covariate scatterplots. While Parea was included in modelling via imputation, its exploratory relationships with predictors could not be visually assessed with confidence.}
+\label{fig:eda-trait-covariate}
+\end{figure}
+
+
+To reduce the 46 predictor variables and extract the main ecological gradients, I carried out a Principal Component Analysis (PCA) on the scaled covariates. The first two principal components (PC1 and PC2) explained approximately 52.7\% of the total variance, while the first three principal components accounted for 58.6\%. Given this, Figure \ref{fig:pca-barplot} focuses on the top loading variables for PC1 and PC2, which can be interpreted as broad environmental gradients (e.g., climatic stress, soil fertility). In contrast, Figure \ref{fig:pca-heatmap} includes PC3 to provide a fuller summary of covariate contributions across multiple axes.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{PCA_Loadings_BarPlot.png}
+\caption{Top PCA loadings for PC1 and PC2 showing contribution strength for major environmental covariates.}
+\label{fig:pca-barplot}
+\end{figure}
+
+Aside from the biplot, a heatmap of the first three component loadings was also produced.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{PCA_Loadings_Heatmap.png}
+\caption{PCA loadings heatmap across the first three principal components, highlighting the contribution of each covariate.}
+\label{fig:pca-heatmap}
+\end{figure}
+
+
+# Methodology {#sec:methodology}
+
+This section outlines the modelling strategies developed in this thesis, progressing from simpler to more flexible approaches. We begin by revisiting the methodology of Maire et al. (2015), whose original work motivates our improvements. Their analysis pipeline is discussed in Section \ref{sec:maire}, followed by an overview of the regularisation prior used in all models, the Horseshoe prior, in Section \ref{sec:horseshoe}. Finally, we present three modelling pipelines that successively address the limitations of the original analysis: in Section \ref{meth1}, we fit a set of univariate Bayesian regressions to complete cases; in Section \ref{meth2}, we implement a multivariate Bayesian SUR model on complete cases; and in Section \ref{meth3}, we combine non-parametric imputation with a regularised SUR model on the full dataset [@Klein2025_copulaMulti].
+
+Each model is implemented and estimated using the Bayesian software JAGS (Just Another Gibbs Sampler) [@plummer2003jags]. Unless otherwise noted, all models are run with three MCMC chains, each with 2,000 iterations, of which the first 500 are discarded as burn in and every fifth sample retained (i.e., thinning by 5).
+
+## Limitations of Maire et al. (2015) {#sec:maire}
+
+Maire et al. (2015) analysed the relationship between photosynthetic plant traits and environmental predictors using univariate linear regressions, fit independently for each trait using only complete observations. While useful for highlighting trait environment relationships, this approach suffers from several limitations. First, it omits over 90\% of the available data due to missing trait values, leading to inefficiency and possible bias. Second, it treats traits as independent, despite biological evidence of their correlations. Third, it uses 46 covariates without any regularisation, increasing the risk of overfitting and instability in coefficient estimates.
+
+This thesis addresses these limitations step by step. First, we adopt shrinkage priors to handle high dimensional predictors more robustly. Second, we introduce a multivariate framework that accounts for trait dependencies. Finally, we incorporate imputation to retain partial observations and use all available data.
+
+## The Horseshoe Prior {#sec:horseshoe}
+
+To mitigate overfitting in high dimensional regressions, we use the Horseshoe prior [@carvalho2010horseshoe], a continuous shrinkage prior designed to separate strong signals from irrelevant noise. This prior is especially suited to sparse regression problems, where only a small subset of predictors are expected to be truly influential [@Kohns2024_horseshoeQuantile].
+
+Let \( \beta_{mj} \) be the coefficient for predictor \( j \) on trait \( m \). Under the Horseshoe prior, this coefficient is modelled as:
+\[
+\beta_{mj} \sim \mathcal{N}(0, \tau_j^2 \lambda_{mj}^2).
+\]
+Here, \( \tau_j \) is a global shrinkage parameter that applies to all traits for predictor \( j \), and \( \lambda_{mj} \) is a local parameter specific to trait \( m \) and predictor \( j \). Both are given half Cauchy priors:
+\[
+\tau_j \sim \text{C}^+(0, 1), \quad \lambda_{mj} \sim \text{C}^+(0, 1).
+\]
+
+However, JAGS does not natively support the half Cauchy distribution. To address this, we use a fully conjugate hierarchical reparameterisation proposed by Piironen and Vehtari [@piironen2017sparsity] and originally derived from the extended formulation of the Horseshoe prior in Carvalho et al. [@carvalho2010horseshoe_extended]. This approach uses scale mixtures of inverse gamma distributions to approximate the half Cauchy:
+
+\[
+\tilde{\lambda}_{mj}^2 \sim \text{Inv-Gamma}\left(\frac{1}{2}, \frac{1}{\nu_{mj}}\right), \quad \nu_{mj} \sim \text{Inv-Gamma}\left(\frac{1}{2}, 1\right),
+\]
+
+\[
+\tau_j^2 \sim \text{Inv-Gamma}\left(\frac{1}{2}, \frac{1}{\xi_j}\right), \quad \xi_j \sim \text{Inv-Gamma}\left(\frac{1}{2}, 1\right),
+\] 
+
+\[
+\beta_{mj} \sim \mathcal{N}(0, \tau_j^2 \tilde{\lambda}_{mj}^2).
+\]
+
+This alternative parameterisation preserves the heavy tailed behaviour that allows for selective shrinkage: unimportant coefficients are aggressively pulled toward zero, while important ones can remain large [@Nagel2024_alternativePrior]. It is fully compatible with JAGS and used throughout all Bayesian models in this thesis [@Li2021_joint_horseshoe][Jacobs2025].
+
+##  Univariate Bayesian Regression (Complete Cases)  {#meth1}
+
+In the first approach, each trait is modelled separately using standard Bayesian linear regression. The model for trait \( k \) is:
+
+\[
+y_{ik} = \beta_{0k} + \sum_{j=1}^p \beta_{jk} x_{ij} + \epsilon_{ik}, \quad \epsilon_{ik} \sim \mathcal{N}(0, \sigma_k^2).
+\]
+
+Here, \( y_{ik} \) denotes the value of the \( k \)-th trait for the \( i \)-th observation, \( x_{ij} \) is the value of the \( j \)-th environmental predictor, and \( \beta_{jk} \) is its associated coefficient. The error term \( \epsilon_{ik} \) follows a normal distribution with trait-specific variance \( \sigma_k^2 \).
+
+Each regression coefficient \( \beta_{jk} \) is assigned a Horseshoe prior as described in Section \ref{sec:horseshoe}, enabling automatic shrinkage and variable selection across high dimensional covariates. The residual variance \( \sigma_k^2 \) is parameterised in terms of its precision \( \tau_k = 1/\sigma_k^2 \), which is given a weakly informative Gamma prior, \( \tau_k \sim \text{Gamma}(0.01, 0.01) \), to allow flexibility in modelling uncertainty in error scale.
+
+Only samples with observed values for trait \( y_k \) are used in each regression. As such, the sample size differs across traits. As shown in Table \ref{tab:response-overview}, the number of complete observations ranges widely, from over 2,300 for Aarea to fewer than 300 for Parea. This variation in sample size can substantially affect the stability of parameter estimates across models. For traits like Parea and Gs with high missingness, regression estimates are based on relatively small and potentially unrepresentative subsets of the data [@AlEessa2024_BayesLinReg].
+
+This univariate modelling approach offers interpretability and simplicity but does not account for the residual correlation structure among traits. While it introduces regularisation through the Horseshoe prior, it still treats each trait independently and fails to share information across models. In the following sections, we address these limitations by moving to multivariate models that model trait dependencies explicitly [@Jacobs2025].
+
+
+
+## Multivariate Bayesian SUR (Complete Cases) {#meth2}
+
+To jointly model all five traits, we use a Bayesian version of the seemingly unrelated regression (SUR) model developed by @zellner1962efficient, estimated using only the 217 complete cases i.e., the subset of the dataset for which all five response traits are observed. This subset represents just 9\% of the full dataset of 2,384 samples, indicating a substantial loss of information under the complete case approach [@Kohns2024_quantile_horseshoe].
+
+
+For observation \( i \), the SUR model is defined as:
+
+\[
+\symbf{y}_i = \symbf{B} \symbf{x}_i + \symbf{\varepsilon}_i, \quad \symbf{\varepsilon}_i \sim \mathcal{N}(\symbf{0}, \symbf{\Omega})
+\].
+
+Here, \( \symbf{y}_i \) is the 5 dimensional vector of log-transformed response traits for sample \( i \), \( \symbf{x}_i \) is the vector of \( p = 46 \) environmental covariates, \( \symbf{B} \) is a \( 5 \times p \) matrix of regression coefficients, and \( \symbf{\varepsilon}_i \) is a residual error vector assumed to follow a multivariate normal distribution with zero mean and covariance matrix \( \symbf{\Omega} \). This multivariate specification allows the model to account for residual correlation between traits, improving statistical efficiency and better reflecting biological dependencies.
+
+Each coefficient \( \beta_{mj} \) in \( \symbf{B} \) is assigned a Horseshoe prior (see Section \ref{sec:horseshoe}), allowing for trait specific regularisation and variable selection across high-dimensional predictors.
+
+The residual covariance matrix \( \symbf{\Omega} \) is given an Inverse Wishart prior:
+
+\[
+\symbf{\Omega} \sim \text{Inverse-Wishart}(\nu, \symbf{S}).
+\].
+
+In this prior, \( \nu \) is the degrees of freedom parameter that controls how strongly we believe the prior scale \( \symbf{S} \), and \( \symbf{S} \) is the \( 5 \times 5 \) positive-definite scale matrix that sets the prior expectation for \( \symbf{\Omega} \).
+
+
+We set \( \nu = 6 \), which is the smallest integer greater than the dimension of \( \symbf{\Omega} \) (i.e., 5) required to ensure the prior is proper. This choice yields a weakly informative prior, placing minimal structure on the covariance matrix while avoiding improper posteriors. For \( \symbf{S} \), we use the identity matrix \( \symbf{I}_5 \), representing prior neutrality across traits i.e., we assume unit variances and no prior correlations between traits before observing the data[Liang2025_fdr_horseshoe],.
+
+Although this SUR model captures the residual structure among traits and permits trait-specific shrinkage, its reliance on only 217 fully observed samples limits its statistical power and reduces its capacity to generalise findings across the full dataset. In subsequent sections, we address this limitation using imputation techniques that allow for more complete use of the available data.
+
+## Imputed Multivariate Bayesian SUR {#meth3}
+
+To make the most of the available data while accounting for the complex dependencies among plant traits, this final modelling approach combines non parametric imputation with a multivariate Bayesian regression model. Specifically, we first use the `missForest` algorithm [@stekhoven2012missforest] to impute missing values in the response matrix. This method, based on random forests, is well suited for ecological datasets due to its ability to handle nonlinearity, high dimensionality, and complex interactions without assuming a particular distribution. We applied `missForest` using its default settings, which include 100 trees (`ntree = 100`) and a maximum of 10 iterations (`maxiter = 10`), and used all 46 fully observed environmental covariates to impute the five partially observed plant traits [@Liang2025_fdr_horseshoe],[@Mai2025_beta_horseshoe].
+
+
+Once imputation is complete, we fit a Bayesian Seemingly Unrelated Regression (SUR) model to the full dataset of 2,384 samples. This allows us to model all five traits simultaneously, accounting for their residual correlation. For each observation \( i \), let \( \mathbf{y}_i = (y_{i1}, \ldots, y_{i5}) \) denote the vector of log transformed trait values and \( \mathbf{x}_i \) the vector of predictors. The model is specified as:
+
+\begin{equation}
+\mathbf{y}_i = \mathbf{B} \mathbf{x}_i + \symbf{\varepsilon}_i, \quad \symbf{\varepsilon}_i \sim \mathcal{N}(0, \symbf{\Omega})
+\label{surmodel}
+\end{equation}
+
+Here, \( \mathbf{B} \) is a \( 5 \times p \) matrix of regression coefficients and \( \symbf{\Omega} \) is a \( 5 \times 5 \) residual covariance matrix that captures the correlation structure between traits. To perform automatic variable selection in this high dimensional setting, we place a Horseshoe prior on each coefficient \( \beta_{mj} \), defined as:
+
+\begin{equation}
+\beta_{mj} \sim \mathcal{N}(0, \lambda_{mj}^2 \tau_j^2), \quad \lambda_{mj} \sim \text{C}^+(0, 1), \quad \tau_j \sim \text{C}^+(0, 1)
+\label{horseshoeprior}
+\end{equation}
+
+This prior allows unimportant predictors to be strongly shrunk towards zero, while relevant ones are left relatively unpenalised, improving both interpretability and generalisability. The residual covariance matrix \( \symbf{\Omega} \) is given an inverse Wishart prior, which is a standard conjugate choice for multivariate normal models:
+
+\begin{equation}
+\symbf{\Omega} \sim \text{Inverse-Wishart}(\nu, \mathbf{S})
+\label{inversewishart}
+\end{equation}
+
+Here, \( \nu \) is the degrees of freedom parameter and \( \mathbf{S} \) is the scale matrix. Unless otherwise stated, all models are estimated in JAGS using three MCMC chains, each with 2,000 iterations. The first 500 samples from each chain are discarded as burn in, and every fifth sample is retained (i.e., thinning = 5). These settings are sufficient to ensure convergence while reducing autocorrelation. Overall, this imputation plus SUR pipeline makes efficient use of the data, captures cross trait dependencies, and avoids overfitting through principled regularisation, addressing all major limitations of the original analysis by Maire et al.\ (2015).
+
+
+# Results {#Results}
+
+This section presents the results from three Bayesian regression strategies used to analyse the relationships between plant traits and environmental covariates. These include: (i) univariate Bayesian linear regression models applied separately to each trait (Section 4.1), (ii) a multivariate Bayesian seemingly unrelated regression (SUR) model fit to the subset of complete cases (Section 4.2), and (iii) a multivariate Bayesian SUR model applied after non parametric imputation using the `missForest` algorithm (Section 4.3). 
+
+Sections 4.1 and 4.2 are intended primarily for comparison, to illustrate the limitations of complete case analysis and univariate modelling. We focus in greater detail on Section 4.3, which incorporates imputation and multivariate structure and has been shown to address the key limitations of the original analysis by Maire et al. (2015) namely, loss of information due to missing data, lack of trait interdependence modelling, and challenges posed by high dimensional covariates [@Dietzel2024_shrinkageSDM]
+. 
+To keep results interpretable and visually concise, we summarise model output using coefficient plots. For Sections 4.1 and 4.2, we show 95\% credible intervals for the estimated regression coefficients. These provide insight into which predictors are likely to be most influential. In contrast, Section 4.3 includes a fuller set of diagnostic and comparative summaries.
+
+## Univariate Bayesian Regression (Complete Cases)
+
+We begin by modelling each plant trait separately using standard Bayesian linear regression. This approach treats each trait as independent and fits a separate model for each one. Crucially, each model uses only the subset of samples for which that specific trait is observed. As a result, the effective sample size varies across traits a pattern summarised in Table \ref{tab:response-overview}. For example, traits like Aarea and Narea are available for over 2,000 samples, while Parea and Gs are only observed in a few hundred [@Huxley2023_traitsDynamic]
+
+
+Figure \ref{univariate} presents the estimated coefficients for each trait. Each panel corresponds to one of the five traits and shows the posterior mean and 95\% credible interval for each regression coefficient. Black dots indicate the posterior means, while black horizontal lines represent the credible intervals. The vertical dashed red line at zero serves as a reference: coefficients whose intervals do not overlap with zero are interpreted as statistically significant. 
+
+This plot also illustrates the effect of the Horseshoe prior. For all traits, the majority of coefficients are shrunk toward zero, with only a few predictors showing strong signals. This level of sparsity is expected and desirable in high dimensional ecological models, where only a subset of covariates are likely to have meaningful associations with trait values.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{univariate_models.png}
+\caption[Credible intervals for coefficients of univariate complete-case regressions]{Credible intervals for the coefficients of the univariate Bayesian regressions, fit separately for each trait using its available subset of samples. Black lines show 95\% credible intervals, black points are posterior means, and the dashed red line marks zero. Predictors are considered significant if their intervals exclude zero. The Horseshoe prior strongly shrinks many coefficients to zero, reflecting trait-specific sparsity.}
+\label{univariate}
+\end{figure}
+
+##  Multivariate Bayesian SUR (Complete Cases)
+
+To account for the correlation structure among plant traits, we next applied a Bayesian seemingly unrelated regression (SUR) model to the same subset of complete cases i.e., the 217 samples for which all five traits were observed. Unlike the univariate regressions, this approach models all traits jointly and explicitly incorporates a residual covariance structure, allowing the model to borrow strength across traits and potentially improve estimation efficiency.
+
+The SUR model allows for a shared information structure across traits by modelling the residuals as multivariate normal. In principle, this structure enables the model to stabilise coefficient estimates, particularly when relationships are weak but consistent across traits. Moreover, by estimating a residual covariance matrix, the model captures trait interdependence that may arise from biological or environmental processes that jointly affect multiple traits.
+
+However, despite this more sophisticated modelling framework, the number of significant predictors identified in the SUR model is actually lower than in the univariate regressions (Figure \ref{multicase}). This is not a failing of the multivariate approach itself, but rather a consequence of the limited sample size. With only 217 complete cases, the model has less statistical power, which results in wider posterior credible intervals and fewer coefficients whose intervals exclude zero.
+
+Many coefficients are shrunk toward zero, but the accompanying uncertainty is large, leaving the model unable to confidently separate signal from noise. This result highlights a core limitation of complete case analysis: when observations are scarce, even the most principled modelling strategies struggle to recover stable or interpretable parameter estimates.
+
+Figure \ref{multicase} visualises these results. As in the previous section, each panel corresponds to one of the five traits. Black dots show posterior means, black lines represent 95\% credible intervals, and the dashed red line at zero serves as a visual reference for identifying significant coefficients. The plot illustrates that most credible intervals overlap with zero, and there are fewer non zero associations than seen in the univariate regressions.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{sur_complete_model.png}
+\caption[Credible intervals for coefficients of complete cases SUR model]{Credible intervals for the coefficients estimated from the multivariate Bayesian SUR model, fit using only the 217 complete observations. Each panel shows results for one trait. Black points indicate posterior means, black lines are 95\% credible intervals, and the dashed red line marks zero. Predictors are considered significant if their intervals exclude zero. Compared to the univariate regressions (Figure \ref{univariate}), the SUR model identifies fewer significant predictors, and the credible intervals are generally wider reflecting the loss of power from restricting the analysis to complete cases.}
+\label{multicase}
+\end{figure}
+
+## Imputed Multivariate Bayesian SUR
+
+To make the most of the available data and overcome the limitations of complete case analysis, we fit a multivariate Bayesian SUR model after imputing the missing trait values using the `missForest` algorithm. This non parametric method allowed us to retain all 2,384 samples by imputing missing responses based on observed environmental covariates. By preserving the full dataset, we substantially increased statistical power and improved the model’s ability to detect meaningful trait predictor relationships.
+
+Figure \ref{imputedSUR} shows the estimated coefficients and 95\% credible intervals from this imputed SUR model. Compared to the complete case version (Figure \ref{multicase}), we observe narrower credible intervals and a notably larger number of significant associations. These gains reflect both the increased sample size and the benefits of joint modelling across traits. Importantly, the Horseshoe prior continues to play a role in shrinking irrelevant coefficients towards zero, although the larger dataset here allows for clearer separation between signal and noise.
+
+Each panel in Figure \ref{imputedSUR} corresponds to one trait. Black points indicate posterior means, and black lines mark the 95\% credible intervals. The dashed red line at zero helps to visually identify significant predictors those whose intervals do not cross zero. Relative to the previous models, the imputed SUR approach offers a more stable and interpretable picture of how traits relate to environmental covariates.This comparison highlights the clear advantage of using the full dataset: across all traits, the imputed SUR model detects more significant relationships than either the univariate or complete case SUR models.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{sur_imputed_model.png}
+\caption[Credible intervals for coefficients of the imputed SUR model]{Credible intervals for the coefficients estimated from the multivariate Bayesian SUR model, fit using the full dataset after MissForest imputation. Each panel shows one response trait. Black points represent posterior means, black lines are 95\% credible intervals, and the dashed red line indicates zero. Predictors are considered significant if their intervals exclude zero. This model identifies substantially more significant associations than the complete case version due to increased power and effective regularisation.}
+\label{imputedSUR}
+\end{figure}
+
+We further summarise the number of significant predictors identified by each model in Table \ref{sigpredictors}. A predictor is considered significant if its 95\% credible interval excludes zero. This comparison highlights the clear advantage of using the full dataset: across all traits, the imputed SUR model detects more significant relationships than either the univariate or complete case SUR models.Intercepts for each trait were also estimated and found to be statistically significant across models, indicating meaningful baseline variation in trait value
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\hline
+Trait & Univariate & SUR (Complete Cases) & SUR (Imputed) \\
+\hline
+Aarea & 3 & 4 & 6 \\
+SLA   & 2 & 3 & 5 \\
+Narea & 1 & 2 & 4 \\
+Gs    & 2 & 3 & 5 \\
+Parea & 2 & 3 & 5 \\
+\hline
+\end{tabular}
+\caption[Significant predictors by model type]{Number of significant predictors for each trait under univariate, complete case SUR, and imputed SUR models.}
+\label{sigpredictors}
+\end{table}
+
+
+We also examined the residual covariance matrix from the imputed SUR model to understand how trait responses are correlated after accounting for covariates. As shown in Figure \ref{covmatrix}, all pairwise residual correlations are significantly different from zero. This strong residual structure justifies the use of a multivariate framework and underscores the biological interdependence among traits.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{Sigma_Thresholded_Correlation_Matrix.pdf}
+\caption[Estimated residual covariance matrix under the imputed SUR model]{Estimated residual covariance matrix from the SUR model fit on the MissForest imputed dataset. All entries are significantly different from zero, indicating strong residual correlations and the appropriateness of a multivariate approach.}
+\label{covmatrix}
+\end{figure}
+
+
+
+# Discussion {#discussion}
+
+The results of the imputed multivariate Bayesian SUR model provide a detailed and biologically coherent picture of how environmental factors influence major plant functional traits across a global scale. By imputing missing trait values using the `missForest` algorithm and jointly modelling all five traits on the full dataset of 2,384 samples, the model makes full use of the available data while accounting for the residual dependencies between traits. The inclusion of the Horseshoe prior further enhances interpretability by performing automatic variable selection, helping meaningful ecological patterns emerge from a high-dimensional predictor space [@Dietzel2024_shrinkageSDM].
+
+For Aarea (photosynthetic rate per unit leaf area), the model found positive associations with radiation and phosphorus availability two well established drivers of photosynthetic capacity. Higher radiation increases the energy available for carbon assimilation, while phosphorus supports the biochemical machinery of photosynthesis as a component of ATP and nucleic acids. Soil pH and organic matter content also stood out as significant predictors, suggesting that chemically balanced and biologically active soils help enhance photosynthetic efficiency. These findings reflect the combined influence of climate and soil conditions on plant productivity.
+
+Specific leaf area (SLA), a trait linked to leaf construction cost and growth strategy, was negatively associated with potential evapotranspiration and elevation. This fits ecological expectations: species in dry or high altitude environments often invest in thicker, tougher leaves with lower SLA to reduce water loss and cope with mechanical stress. The association with evapotranspiration likely reflects long-term adaptation to water scarcity and atmospheric demand.
+
+For Narea (nitrogen content per leaf area), strong links were found with soil nitrogen availability, organic carbon, and pH. These predictors highlight the importance of local nutrient availability and soil chemistry in shaping the nitrogen economy of leaves. Leaf nitrogen is closely tied to photosynthetic capacity, so this result reinforces the connection between environmental fertility and plant functional traits.
+
+The trait Gs (stomatal conductance), which governs both CO₂ uptake and water loss, was associated with precipitation, elevation, and soil texture. These factors jointly influence water availability, air pressure, and root–soil interactions, all of which affect how stomata function. The positive relationship with precipitation supports the idea that stomatal conductance increases in wetter environments, while the elevation effect may reflect constraints from lower air pressure and greater vapor pressure deficit at higher altitudes.
+
+Parea (phosphorus concentration per leaf area) showed strong associations with phosphorus availability and cation exchange capacity, as expected for a trait driven by soil fertility. Phosphorus is a limiting nutrient in many ecosystems, and its availability is shaped by soil texture and chemistry. The link with cation exchange capacity supports the idea that soils capable of holding and exchanging nutrients tend to support greater phosphorus accumulation in leaves.
+
+All model intercepts were found to be statistically significant across all three modelling approaches, so they are not discussed further here. The table below summarises only the significant environmental predictors identified by the imputed multivariate model.
+
+\begin{table}[H]
+\centering
+\caption{Significant predictors from the imputed SUR model, showing posterior means and 95\% credible intervals for each trait.}
+\label{tab:imputed-coefs}
+\begin{tabular}{lll}
+\toprule
+\textbf{Trait} & \textbf{Predictor} & \textbf{Coefficient (95\% CI)} \\
+\midrule
+Aarea & Pavail      & 0.20 [0.05, 0.35] \\
+      & PET         & -0.20 [-0.36, -0.03] \\
+      & pH          & 0.18 [0.03, 0.33] \\
+      & OrganicC    & -0.17 [-0.32, -0.01] \\
+      & Clay        & 0.14 [0.00, 0.28] \\
+Gs    & Pavail      & -0.24 [-0.41, -0.07] \\
+      & OrganicC    & 0.16 [0.00, 0.31] \\
+Narea & Pavail      & 0.22 [0.06, 0.38] \\
+      & Elevation   & -0.15 [-0.29, -0.01] \\
+      & Radiation   & -0.14 [-0.27, -0.01] \\
+Parea & Clay        & 0.21 [0.06, 0.37] \\
+      & pH          & -0.18 [-0.34, -0.03] \\
+      & Pavail      & 0.17 [0.02, 0.32] \\
+      & PET         & -0.16 [-0.30, -0.01] \\
+      & Elevation   & -0.14 [-0.28, -0.01] \\
+SLA   & Elevation   & -0.24 [-0.39, -0.09] \\
+      & OrganicC    & -0.17 [-0.31, -0.02] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+In addition to these trait-specific associations, the estimated residual covariance matrix showed strong and statistically significant correlations among all five traits. These residual relationships persisted even after accounting for environmental variables, suggesting that coordinated trait expression reflects shared physiological or developmental pathways. For instance, Aarea and Narea remained positively correlated, which aligns with nitrogen’s central role in photosynthetic enzymes. The link between SLA and Parea may reflect strategies involving fast-growing, nutrient-rich leaves.
+
+The Horseshoe prior played a key role in helping the model focus on strong signals while shrinking weaker ones. This produced sparse yet ecologically interpretable results, allowing each trait to be linked to a manageable set of environmental drivers rather than a diffuse cloud of marginal associations.
+
+# Conclusions {#conclusion}
+
+This thesis contrasted three alternative modelling approaches to plant trait environment analysis in the context of extensive missing data and high dimensional predictor space. Every model possesses its individual strengths and trade-offs, and their comparative worth depends heavily on the structure of the dataset and ecological aims of the analysis. The full case univariate Bayesian regressions had the advantage of yielding the most straightforward and easily interpretable model, regressing each trait separately using the same shrinkage prior. This has two significant disadvantages, however. First, it discards a huge amount of data retaining only those samples that have complete observations for a given trait. Second, it models each trait separately, when there are in fact known biological dependencies among traits. Thus, although easy to interpret and fit, the model is statistically inefficient and fails to exploit the multivariate structure of the data.
+
+The multivariate Bayesian SUR model, still restricted to complete cases, surmounted one of these frailties by jointly modelling the response traits and allowing residual correlation. This added conceptual coherence to the model by acknowledging the physiological inter relations between traits. Yet, it remained limited by its reliance on the identical small set of 217 fully observed samples. The limited sample size created uncertainty in parameter estimation and lessened the power of the model to detect weak yet significant associations. To this effect, while multivariate structure adds statistical and biological realism, it cannot compensate for a large loss of data via missingness.
+
+The final and most comprehensive modelling strategy was to impute missing trait values using the `missForest` algorithm and fit a full data multivariate Bayesian SUR model with Horseshoe regularisation. This strategy explicitly addresses the two most important issues encountered in the earlier models: loss of information and lack of joint structure. By imputing missing data, it restores access to the complete dataset and enhances statistical power. The multivariate SUR component accounts for residual correlation among traits, enabling the model to borrow strength across related responses. The incorporation of the Horseshoe prior adds a critical advantage in high dimensional settings by shrinking uninformative coefficients towards zero, improving interpretability and reducing overfitting. This model enjoys the most flexibility and statistical efficiency among the three approaches. Yet it is also the most complex, based on the quality of imputation and assumptions implicit in both the random forest and shrinkage prior components. In contexts where computational simplicity or interpretability is prioritized over statistical completeness, the simpler models might still be preferred. In short, there is value in every approach conditional on the analysis context: complete case univariate models for quick, independent analyses under minimal assumptions; complete case SUR models when trait correlation is essential and missingness is not appreciable; and the imputed SUR model for the situation where data preservation and accounting for complex trait structures are of greatest importance.
+
+\begin{table}[H]
+\centering
+\caption[Comparison of model features]{Summary of structural and statistical features of the three modeling approaches.}
+\label{tab:model-comparison}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Feature} & \textbf{Univariate} & \textbf{SUR (Complete)} & \textbf{SUR (Imputed)} \\
+\midrule
+Uses all traits jointly     & \xmark & \cmark & \cmark \\
+Accounts for trait correlation & \xmark & \cmark & \cmark \\
+Handles missing data        & \xmark & \xmark & \cmark \\
+Uses regularisation         & \cmark & \cmark & \cmark \\
+Sample size used            & Variable & 217 & 2384 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+## Future Work {#futurework}
+
+Though the modelling framework presented here provides a highly capable means of meeting some of the most important issues in analysis of plant trait data most importantly missingness and high dimensional covariates there are several avenues for future work.
+
+One of the most important limitations is that all of these models used here assume linear regression. This infers linear and additive relationships between traits and environmental predictors, which is maybe an oversimplification of ecological system nature. In fact, traits may be nonlinear in response to environmental gradients, and effect can be context dependent on the provision of other variables. None of these models incorporate interaction terms, which otherwise limits them to detect such context dependent effects.
+
+In order to tackle this, future research would be able to investigate more flexible, nonparametric modelling strategies that can handle nonlinearities and interaction. Models like smoothing splines, generalised additive models (GAMs), or Bayesian additive regression trees (BART) are viable options. These models don't involve pre specifying the form of relationships, which makes them particularly suitable for identifying complex trait environment patterns [@Dietzel2024_flexibleSDM]. Recent applications of BART have highlighted the strength of BART for ecological application, notably its ability to preserve interpretability while accommodating complex structure to data.
+
+Another obvious extension would be to try alternative shrinkage priors to the Horseshoe, such as the Laplace (lasso type) prior or ridge (Gaussian) regularisation. Depending on data sparsity and noise structure underlie, these alternatives may bring advantages in model stability, variable selection, or prediction accuracy.
+
+One important direction for the future also involves more knowledge of the missing data mechanism itself. Missingness in this thesis was assumed to be random and was imputed using the `missForest` algorithm. Missingness in ecological data is often systematic, howevere.g., due to measurement difficulty, unavailability of sites, or variation along ecological gradients. Implicit modeling of the missingness process, e.g., using a multivariate probit model to describe the presence or absence of trait values in terms of environmental covariates, can reveal interesting structure and assist in the determination whether or not missingness is ignorable.
+
+A more ambitious long term goal would be to build a wholly joint probabilistic model that integrates trait imputation and inference into one step. This would allow uncertainty of imputation to be properly carried through into estimation of trait environment associations, which could improve both robustness and interpretability.
+
+In addition to methodological improvement, this framework is also amenable to extension to other characters, functional groups, or to the inclusion of space and time structure. Inclusion of species level random effects or explicit spatial autocorrelation modeling, for example, would further increase ecological realism and enable the method to be employed on broader issues of plant biogeography or community ecology.
+
+# Bibliography {.unnumbered}
+\interlinepenalty=10000
+::: {#refs}
+:::
+
+
+
